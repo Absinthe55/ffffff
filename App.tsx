@@ -5,15 +5,34 @@ import { Button } from './components/Button';
 import { USERS, MACHINES, INITIAL_TASKS } from './constants';
 import { Role, Task, TaskPriority, TaskStatus, User } from './types';
 import { generateTaskDetails } from './services/geminiService';
-import { Activity, AlertCircle, Bot, CheckCircle2, Clock, Camera, Image as ImageIcon, X } from 'lucide-react';
+import { Activity, AlertCircle, Bot, CheckCircle2, Clock, Camera, Image as ImageIcon, X, Bell } from 'lucide-react';
 
-// Use a simple mock login state
+// Toast Notification Component
+const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'info', onClose: () => void }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColor = type === 'success' ? 'bg-green-600' : 'bg-indigo-600';
+
+  return (
+    <div className={`fixed top-0 left-1/2 transform -translate-x-1/2 z-50 flex items-center px-6 py-3 rounded-full shadow-lg text-white ${bgColor} toast-enter mt-4`}>
+      {type === 'success' ? <CheckCircle2 size={20} className="mr-2" /> : <Bell size={20} className="mr-2" />}
+      <span className="font-medium text-sm">{message}</span>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   // State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
   const [currentView, setCurrentView] = useState<string>('dashboard');
   
+  // Toast State
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'info' } | null>(null);
+
   // Create Task Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
@@ -41,11 +60,13 @@ const App: React.FC = () => {
     if (user) {
       setCurrentUser(user);
       setCurrentView('tasks');
+      setToast({ message: `Hoş geldin, ${user.name}`, type: 'info' });
     }
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setToast(null);
   };
 
   const handleUpdateStatus = (taskId: string, newStatus: TaskStatus) => {
@@ -66,6 +87,14 @@ const App: React.FC = () => {
 
       return updatedTask;
     }));
+
+    // Show Feedback Toast
+    let message = "Durum güncellendi.";
+    if (newStatus === TaskStatus.IN_PROGRESS) message = "Kolay gelsin! Göreve başlandı.";
+    if (newStatus === TaskStatus.COMPLETED) message = "Eline sağlık! Görev tamamlandı olarak işaretlendi.";
+    if (newStatus === TaskStatus.APPROVED) message = "Görev onaylandı ve kapatıldı.";
+    
+    setToast({ message, type: 'success' });
   };
 
   const handleEnrichWithAI = async () => {
@@ -105,6 +134,8 @@ const App: React.FC = () => {
     };
     setTasks([newTask, ...tasks]);
     setCurrentView('tasks');
+    setToast({ message: "Yeni görev başarıyla oluşturuldu.", type: 'success' });
+    
     // Reset form
     setNewTaskTitle('');
     setNewTaskDesc('');
@@ -155,36 +186,192 @@ const App: React.FC = () => {
   const completedCount = relevantTasks.filter(t => t.status === TaskStatus.COMPLETED).length;
 
   return (
-    <Layout 
-      currentUser={currentUser} 
-      currentView={currentView} 
-      onChangeView={setCurrentView}
-      onLogout={handleLogout}
-    >
+    <>
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
+        />
+      )}
       
-      {/* VIEW: DASHBOARD */}
-      {currentView === 'dashboard' && (
-        <div className="space-y-6">
-          <header className="mb-6">
-             <h1 className="text-2xl font-bold text-slate-800">Hoş Geldin, {currentUser.name.split(' ')[0]} 👋</h1>
-             <p className="text-slate-500">Birim durumu özeti aşağıdadır.</p>
-          </header>
+      <Layout 
+        currentUser={currentUser} 
+        currentView={currentView} 
+        onChangeView={setCurrentView}
+        onLogout={handleLogout}
+      >
+        
+        {/* VIEW: DASHBOARD */}
+        {currentView === 'dashboard' && (
+          <div className="space-y-6">
+            <header className="mb-6">
+               <h1 className="text-2xl font-bold text-slate-800">Hoş Geldin, {currentUser.name.split(' ')[0]} 👋</h1>
+               <p className="text-slate-500">Birim durumu özeti aşağıdadır.</p>
+            </header>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-             <StatCard label="Bekleyen" value={pendingCount} icon={<Clock className="text-orange-500" />} color="bg-orange-50" />
-             <StatCard label="İşlemde" value={inProgressCount} icon={<Activity className="text-blue-500" />} color="bg-blue-50" />
-             <StatCard label="Tamamlanan" value={completedCount} icon={<CheckCircle2 className="text-green-500" />} color="bg-green-50" />
-             <StatCard label="Toplam Makine" value={MACHINES.length} icon={<AlertCircle className="text-indigo-500" />} color="bg-indigo-50" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+               <StatCard label="Bekleyen" value={pendingCount} icon={<Clock className="text-orange-500" />} color="bg-orange-50" />
+               <StatCard label="İşlemde" value={inProgressCount} icon={<Activity className="text-blue-500" />} color="bg-blue-50" />
+               <StatCard label="Tamamlanan" value={completedCount} icon={<CheckCircle2 className="text-green-500" />} color="bg-green-50" />
+               <StatCard label="Toplam Makine" value={MACHINES.length} icon={<AlertCircle className="text-indigo-500" />} color="bg-indigo-50" />
+            </div>
+
+            <div className="mt-8">
+              <h2 className="text-lg font-bold text-slate-800 mb-4">Acil Müdahale Gerekenler</h2>
+              <div className="space-y-4">
+                {relevantTasks
+                  .filter(t => t.priority === TaskPriority.URGENT || t.priority === TaskPriority.HIGH)
+                  .slice(0, 3) // Show top 3
+                  .map(task => (
+                    <TaskCard 
+                      key={task.id} 
+                      task={task} 
+                      machines={MACHINES} 
+                      users={USERS} 
+                      currentUser={currentUser}
+                      onUpdateStatus={handleUpdateStatus}
+                    />
+                  ))}
+                  {relevantTasks.filter(t => t.priority === TaskPriority.URGENT || t.priority === TaskPriority.HIGH).length === 0 && (
+                    <div className="text-center p-8 bg-white rounded-xl border border-dashed border-slate-300">
+                      <p className="text-slate-500">Harika! Acil bir durum yok.</p>
+                    </div>
+                  )}
+              </div>
+            </div>
           </div>
+        )}
 
-          <div className="mt-8">
-            <h2 className="text-lg font-bold text-slate-800 mb-4">Acil Müdahale Gerekenler</h2>
+        {/* VIEW: CREATE TASK (Manager Only) */}
+        {currentView === 'create' && currentUser.role === Role.MANAGER && (
+          <div className="max-w-xl mx-auto">
+            <h2 className="text-xl font-bold text-slate-800 mb-6">Yeni Arıza/Bakım Görevi</h2>
+            <form onSubmit={handleCreateTask} className="space-y-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Arıza Başlığı</label>
+                <input 
+                  type="text" 
+                  required
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  placeholder="Örn: Pres Ana Pompa Basınç Kaybı"
+                  className="w-full rounded-xl border-slate-200 focus:border-indigo-500 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Makine Adı/Yeri</label>
+                  <input 
+                    type="text"
+                    required
+                    value={machineNameInput}
+                    onChange={(e) => setMachineNameInput(e.target.value)}
+                    placeholder="Örn: C Blok Pres 4"
+                    className="w-full rounded-xl border-slate-200 focus:border-indigo-500 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                   <label className="block text-sm font-medium text-slate-700 mb-1">Öncelik</label>
+                   <select 
+                    value={selectedPriority}
+                    onChange={(e) => setSelectedPriority(e.target.value as TaskPriority)}
+                    className="w-full rounded-xl border-slate-200 focus:border-indigo-500 focus:ring-indigo-500"
+                  >
+                    <option value={TaskPriority.LOW}>Düşük</option>
+                    <option value={TaskPriority.MEDIUM}>Orta</option>
+                    <option value={TaskPriority.HIGH}>Yüksek</option>
+                    <option value={TaskPriority.URGENT}>ACİL</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Görevli Usta</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                   {USERS.filter(u => u.role === Role.MASTER).map(u => (
+                     <div 
+                      key={u.id}
+                      onClick={() => setSelectedAssignee(u.id)}
+                      className={`
+                        cursor-pointer flex items-center p-2 rounded-lg border transition-all
+                        ${selectedAssignee === u.id ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}
+                      `}
+                     >
+                       <img src={u.avatar} alt="" className="w-8 h-8 rounded-full mr-2" />
+                       <span className="text-sm font-medium text-slate-700">{u.name}</span>
+                     </div>
+                   ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                   <label className="block text-sm font-medium text-slate-700">Açıklama / Talimatlar</label>
+                   <button 
+                    type="button"
+                    onClick={handleEnrichWithAI}
+                    disabled={isGeneratingAI || !newTaskTitle}
+                    className="text-xs flex items-center text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                   >
+                     <Bot size={14} className="mr-1" />
+                     {isGeneratingAI ? 'AI Düşünüyor...' : 'AI ile Zenginleştir'}
+                   </button>
+                </div>
+                <textarea 
+                  rows={5}
+                  required
+                  value={newTaskDesc}
+                  onChange={(e) => setNewTaskDesc(e.target.value)}
+                  placeholder="Arıza detaylarını buraya girin..."
+                  className="w-full rounded-xl border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm mb-2"
+                />
+                
+                {/* Image Upload Area */}
+                <div className="mt-2">
+                   {!taskImage ? (
+                      <button
+                        type="button"
+                        onClick={handleAddImage}
+                        className="flex items-center space-x-2 text-sm text-slate-600 hover:text-indigo-600 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg transition-colors"
+                      >
+                        <Camera size={16} />
+                        <span>Fotoğraf Ekle (Örnek)</span>
+                      </button>
+                   ) : (
+                     <div className="relative inline-block mt-2">
+                       <img src={taskImage} alt="Task" className="h-24 w-auto rounded-lg border border-slate-200 shadow-sm" />
+                       <button
+                         type="button"
+                         onClick={handleRemoveImage}
+                         className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600"
+                       >
+                         <X size={12} />
+                       </button>
+                     </div>
+                   )}
+                </div>
+              </div>
+
+              <Button type="submit" fullWidth size="lg">Görevi Ata</Button>
+            </form>
+          </div>
+        )}
+
+        {/* VIEW: TASK LIST */}
+        {currentView === 'tasks' && (
+          <div>
+            <h2 className="text-xl font-bold text-slate-800 mb-4">
+               {currentUser.role === Role.MANAGER ? 'Tüm Görevler' : 'Görevlerim'}
+            </h2>
+            
+            {/* Tabs for filters could go here */}
+            
             <div className="space-y-4">
-              {relevantTasks
-                .filter(t => t.priority === TaskPriority.URGENT || t.priority === TaskPriority.HIGH)
-                .slice(0, 3) // Show top 3
-                .map(task => (
-                  <TaskCard 
+              {relevantTasks.map(task => (
+                 <TaskCard 
                     key={task.id} 
                     task={task} 
                     machines={MACHINES} 
@@ -192,168 +379,22 @@ const App: React.FC = () => {
                     currentUser={currentUser}
                     onUpdateStatus={handleUpdateStatus}
                   />
-                ))}
-                {relevantTasks.filter(t => t.priority === TaskPriority.URGENT || t.priority === TaskPriority.HIGH).length === 0 && (
-                  <div className="text-center p-8 bg-white rounded-xl border border-dashed border-slate-300">
-                    <p className="text-slate-500">Harika! Acil bir durum yok.</p>
-                  </div>
-                )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* VIEW: CREATE TASK (Manager Only) */}
-      {currentView === 'create' && currentUser.role === Role.MANAGER && (
-        <div className="max-w-xl mx-auto">
-          <h2 className="text-xl font-bold text-slate-800 mb-6">Yeni Arıza/Bakım Görevi</h2>
-          <form onSubmit={handleCreateTask} className="space-y-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Arıza Başlığı</label>
-              <input 
-                type="text" 
-                required
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                placeholder="Örn: Pres Ana Pompa Basınç Kaybı"
-                className="w-full rounded-xl border-slate-200 focus:border-indigo-500 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Makine Adı/Yeri</label>
-                <input 
-                  type="text"
-                  required
-                  value={machineNameInput}
-                  onChange={(e) => setMachineNameInput(e.target.value)}
-                  placeholder="Örn: C Blok Pres 4"
-                  className="w-full rounded-xl border-slate-200 focus:border-indigo-500 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">Öncelik</label>
-                 <select 
-                  value={selectedPriority}
-                  onChange={(e) => setSelectedPriority(e.target.value as TaskPriority)}
-                  className="w-full rounded-xl border-slate-200 focus:border-indigo-500 focus:ring-indigo-500"
-                >
-                  <option value={TaskPriority.LOW}>Düşük</option>
-                  <option value={TaskPriority.MEDIUM}>Orta</option>
-                  <option value={TaskPriority.HIGH}>Yüksek</option>
-                  <option value={TaskPriority.URGENT}>ACİL</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Görevli Usta</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                 {USERS.filter(u => u.role === Role.MASTER).map(u => (
-                   <div 
-                    key={u.id}
-                    onClick={() => setSelectedAssignee(u.id)}
-                    className={`
-                      cursor-pointer flex items-center p-2 rounded-lg border transition-all
-                      ${selectedAssignee === u.id ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}
-                    `}
-                   >
-                     <img src={u.avatar} alt="" className="w-8 h-8 rounded-full mr-2" />
-                     <span className="text-sm font-medium text-slate-700">{u.name}</span>
+              ))}
+              {relevantTasks.length === 0 && (
+                 <div className="text-center py-12">
+                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                     <CheckCircle2 className="text-slate-400" size={32} />
                    </div>
-                 ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                 <label className="block text-sm font-medium text-slate-700">Açıklama / Talimatlar</label>
-                 <button 
-                  type="button"
-                  onClick={handleEnrichWithAI}
-                  disabled={isGeneratingAI || !newTaskTitle}
-                  className="text-xs flex items-center text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
-                 >
-                   <Bot size={14} className="mr-1" />
-                   {isGeneratingAI ? 'AI Düşünüyor...' : 'AI ile Zenginleştir'}
-                 </button>
-              </div>
-              <textarea 
-                rows={5}
-                required
-                value={newTaskDesc}
-                onChange={(e) => setNewTaskDesc(e.target.value)}
-                placeholder="Arıza detaylarını buraya girin..."
-                className="w-full rounded-xl border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm mb-2"
-              />
-              
-              {/* Image Upload Area */}
-              <div className="mt-2">
-                 {!taskImage ? (
-                    <button
-                      type="button"
-                      onClick={handleAddImage}
-                      className="flex items-center space-x-2 text-sm text-slate-600 hover:text-indigo-600 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg transition-colors"
-                    >
-                      <Camera size={16} />
-                      <span>Fotoğraf Ekle (Örnek)</span>
-                    </button>
-                 ) : (
-                   <div className="relative inline-block mt-2">
-                     <img src={taskImage} alt="Task" className="h-24 w-auto rounded-lg border border-slate-200 shadow-sm" />
-                     <button
-                       type="button"
-                       onClick={handleRemoveImage}
-                       className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600"
-                     >
-                       <X size={12} />
-                     </button>
-                   </div>
-                 )}
-              </div>
-            </div>
-
-            <Button type="submit" fullWidth size="lg">Görevi Ata</Button>
-          </form>
-        </div>
-      )}
-
-      {/* VIEW: TASK LIST */}
-      {currentView === 'tasks' && (
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 mb-4">
-             {currentUser.role === Role.MANAGER ? 'Tüm Görevler' : 'Görevlerim'}
-          </h2>
-          
-          {/* Tabs for filters could go here */}
-          
-          <div className="space-y-4">
-            {relevantTasks.map(task => (
-               <TaskCard 
-                  key={task.id} 
-                  task={task} 
-                  machines={MACHINES} 
-                  users={USERS} 
-                  currentUser={currentUser}
-                  onUpdateStatus={handleUpdateStatus}
-                />
-            ))}
-            {relevantTasks.length === 0 && (
-               <div className="text-center py-12">
-                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                   <CheckCircle2 className="text-slate-400" size={32} />
+                   <h3 className="text-lg font-medium text-slate-900">Görev Bulunamadı</h3>
+                   <p className="text-slate-500 mt-1">Şu anda listelenecek bir görev yok.</p>
                  </div>
-                 <h3 className="text-lg font-medium text-slate-900">Görev Bulunamadı</h3>
-                 <p className="text-slate-500 mt-1">Şu anda listelenecek bir görev yok.</p>
-               </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-    </Layout>
+      </Layout>
+    </>
   );
 };
 
