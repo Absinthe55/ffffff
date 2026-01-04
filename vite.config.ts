@@ -4,8 +4,9 @@ import react from '@vitejs/plugin-react';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: './', // Bu satır GitHub Pages'de beyaz ekran hatasını çözer
+  base: './', // GitHub Pages için gerekli
   define: {
-    'process.env.API_KEY': JSON.stringify(process.env.API_KEY)
+    // API_KEY yoksa boş string ata ki build patlamasın
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY || "")
   }
 });
